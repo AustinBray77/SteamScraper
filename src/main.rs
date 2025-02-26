@@ -2,7 +2,6 @@ extern crate reqwest;
 extern crate tl;
 extern crate tokio;
 
-mod account;
 mod error;
 mod heap;
 mod log;
@@ -17,13 +16,18 @@ use std::{
     sync::Arc,
     thread::current,
 };
-use steam_requester::{get_friends, get_friends_link};
+use steam_requester::{get_friends, test_account_build_info};
 use tokio::task::JoinSet;
 use util::{join_maps_on_shortest, time_fn, time_fn_async, unzip_tuple_lists};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let path = find_shortest_path_between_people("76561198138683364", "DrDisrespect", 7).await?;
+    let path = find_shortest_path_between_people(
+        "https://steamcommunity.com/profiles/76561198138683364",
+        "https://steamcommunity.com/profiles/76561198043820228",
+        7,
+    )
+    .await?;
 
     for val in path {
         print!("{} ->", val);
@@ -100,8 +104,8 @@ async fn find_shortest_path_between_people(
     let mut queue: HashSet<(String, String)> = HashSet::new();
     let mut preds: HashMap<String, String> = HashMap::new();
 
-    queue.insert((from.to_string(), get_friends_link(from)));
-    preds.insert(from.to_string(), String::new());
+    queue.insert((String::from("START"), from.to_string() + "/friends/"));
+    preds.insert(String::from("START"), String::new());
 
     loop {
         let current_run = time_fn(

@@ -1,9 +1,84 @@
 use std::{error::Error, fmt::Display};
 
-use tl::{Node, NodeHandle};
+use tl::{Node, NodeHandle, Parser};
 
 use crate::error::SteamError;
 use crate::util::combine_tuple_lists;
+
+use std::collections::HashSet;
+
+#[derive(Debug)]
+struct AccountInfo {
+    pub name: String,
+    pub recent_games: HashSet<String>,
+    pub country: String,
+}
+
+pub async fn test_account_build_info() {
+    let account = build_account_info(String::from(
+        "https://steamcommunity.com/profiles/76561198138683364/",
+    ))
+    .await
+    .unwrap();
+
+    println!("{:?}", account);
+}
+
+pub async fn score_based_on(base_account: AccountInfo, scored_account: String) -> f32 {
+    return 1.0;
+}
+
+fn extract_child_text<'a>(node: &Node<'a>, parser: &Parser<'a>) -> Option<String> {
+    let children = node.children()?;
+
+    let first_child = children.top().iter().next()?;
+
+    let text = first_child.get(parser)?.inner_text(parser).to_string();
+
+    Some(text)
+}
+
+async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Error>> {
+    let raw_page = profile_from_link(link).await?;
+
+    let parse_options = tl::ParserOptions::default();
+
+    let dom = tl::parse(raw_page.as_str(), parse_options)?;
+
+    let parser = dom.parser();
+
+    let recent_games = dom
+        .get_elements_by_class_name("game_name")
+        .filter_map(|node| node.get(parser))
+        .filter_map(|node| extract_child_text(node, parser))
+        .collect::<HashSet<String>>();
+
+    let name = dom
+        .get_elements_by_class_name("actual_persona_name")
+        .filter_map(|node| node.get(parser))
+        .map(|node| node.inner_text(parser).to_string())
+        .next()
+        .unwrap_or(String::from("NAME NOT FOUND"));
+
+    let country = dom
+        .get_elements_by_class_name("header_real_name")
+        .filter_map(|node| node.get(parser))
+        .map(|node| node.inner_text(parser).to_string())
+        .next()
+        .unwrap_or(String::from("COUNTRY NOT FOUND"))
+        .trim()
+        .split(',')
+        .last()
+        .unwrap_or("DID NOT WORK!")
+        .trim()
+        .to_string();
+
+    Ok(AccountInfo {
+        name: name,
+        recent_games: recent_games,
+        country: country,
+    })
+}
 
 pub async fn get_profile_info(id: &'static str) -> Result<String, Box<dyn Error>> {
     let raw_page = profile_from_id(id).await?;
@@ -71,20 +146,20 @@ pub fn extract_friend_name<'a>(content: String) -> Option<String> {
     content.split('<').next().map(|str| str.trim().to_string())
 }
 
-pub fn get_friends_link<T: Display>(id: T) -> String {
-    format!("https://steamcommunity.com/profiles/{}/friends", id)
-}
-
 pub async fn raw_friends_page(link: String) -> Result<String, Box<dyn Error>> {
     let friends_page = reqwest::get(link).await?.text().await?;
 
     Ok(friends_page)
 }
 
+async fn profile_from_link(link: String) -> Result<String, Box<dyn Error>> {
+    let raw_page = reqwest::get(link).await?.text().await?;
+
+    Ok(raw_page)
+}
+
 pub async fn profile_from_id(id: &'static str) -> Result<String, Box<dyn Error>> {
     let profile_link = format!("https://steamcommunity.com/profiles/{}", id);
 
-    let profile = reqwest::get(profile_link).await?.text().await?;
-
-    Ok(profile)
+    profile_from_link(profile_link).await
 }

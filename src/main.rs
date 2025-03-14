@@ -9,6 +9,7 @@ mod steam_requester;
 mod util;
 
 use error::SteamError;
+use heap::{MinHeap, Order};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     error::Error,
@@ -94,6 +95,30 @@ fn collect_tasks(
     }
 
     task_set
+}
+
+async fn find_shortest_path_with_score(
+    from: &'static str,
+    to: &'static str,
+    max_depth: usize,
+) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut queue: MinHeap<
+        (String, String, f32),
+        fn(&(String, String, f32), &(String, String, f32)) -> Order,
+    > = MinHeap::new(|(_, _, score1ptr), (_, _, score2ptr)| {
+        let score1 = *score1ptr;
+        let score2 = *score2ptr;
+
+        if score1 > score2 {
+            Order::Greater
+        } else if score1 == score2 {
+            Order::Equal
+        } else {
+            Order::Smaller
+        }
+    });
+
+    Ok(Vec::new())
 }
 
 async fn find_shortest_path_between_people(

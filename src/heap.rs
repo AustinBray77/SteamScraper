@@ -1,21 +1,29 @@
 use std::cmp::min;
 
-struct MinHeap<T: Eq + Ord> {
-    data: Vec<T>,
-    len: usize,
+pub enum Order {
+    Greater,
+    Equal,
+    Smaller,
 }
 
-impl<T: Eq + Ord> MinHeap<T> {
-    pub fn new() -> Self {
+pub struct MinHeap<T, F: Fn(&T, &T) -> Order> {
+    data: Vec<T>,
+    len: usize,
+    cmp: F,
+}
+
+impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
+    pub fn new(cmp: F) -> Self {
         Self {
             data: Vec::new(),
             len: 0,
+            cmp: cmp,
         }
     }
 
     pub fn sink(&mut self, index: usize) {
         if let Some(smallest_child) = self.smallest_child(index) {
-            if self.data[index] > self.data[smallest_child] {
+            if let Order::Greater = (self.cmp)(&self.data[index], &self.data[smallest_child]) {
                 self.swap(index, smallest_child);
                 self.sink(smallest_child);
             }
@@ -24,7 +32,7 @@ impl<T: Eq + Ord> MinHeap<T> {
 
     pub fn swim(&mut self, index: usize) {
         if let Some(parent) = self.parent(index) {
-            if self.data[parent] > self.data[index] {
+            if let Order::Greater = (self.cmp)(&self.data[parent], &self.data[index]) {
                 self.swap(parent, index);
                 self.swim(parent);
             }
@@ -90,7 +98,7 @@ impl<T: Eq + Ord> MinHeap<T> {
             None
         } else if right >= self.data.len() {
             Some(left)
-        } else if self.data[left] > self.data[right] {
+        } else if let Order::Greater = (self.cmp)(&self.data[left], &self.data[right]) {
             Some(right)
         } else {
             Some(left)

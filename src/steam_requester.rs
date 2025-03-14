@@ -8,7 +8,7 @@ use crate::util::combine_tuple_lists;
 use std::collections::HashSet;
 
 #[derive(Debug)]
-struct AccountInfo {
+pub struct AccountInfo {
     pub name: String,
     pub recent_games: HashSet<String>,
     pub country: String,
@@ -24,8 +24,24 @@ pub async fn test_account_build_info() {
     println!("{:?}", account);
 }
 
-pub async fn score_based_on(base_account: AccountInfo, scored_account: String) -> f32 {
-    return 1.0;
+pub async fn score_account_overlap(base_account: AccountInfo, scored_account: AccountInfo) -> f32 {
+    let norm_size = base_account.recent_games.len();
+
+    let inter_size = base_account
+        .recent_games
+        .intersection(&(scored_account.recent_games))
+        .collect::<HashSet<&String>>()
+        .len();
+
+    let size_score = inter_size as f32 / norm_size as f32;
+
+    let country_score = if base_account.country == scored_account.country {
+        1_f32
+    } else {
+        0_f32
+    };
+
+    0.75_f32 * country_score + 0.25_f32 * size_score
 }
 
 fn extract_child_text<'a>(node: &Node<'a>, parser: &Parser<'a>) -> Option<String> {

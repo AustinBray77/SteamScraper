@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::{cmp::min, vec::IntoIter};
 
 pub enum Order {
     Greater,
@@ -6,13 +6,14 @@ pub enum Order {
     Smaller,
 }
 
-pub struct MinHeap<T, F: Fn(&T, &T) -> Order> {
+#[derive(Clone)]
+pub struct MaxHeap<T: Clone, F: Fn(&T, &T) -> Order> {
     data: Vec<T>,
     len: usize,
     cmp: F,
 }
 
-impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
+impl<T: Clone, F: Fn(&T, &T) -> Order + Clone> MaxHeap<T, F> {
     pub fn new(cmp: F) -> Self {
         Self {
             data: Vec::new(),
@@ -21,9 +22,17 @@ impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
         }
     }
 
+    pub fn new_similar(&self) -> Self {
+        Self {
+            data: Vec::new(),
+            len: 0,
+            cmp: self.cmp.clone(),
+        }
+    }
+
     pub fn sink(&mut self, index: usize) {
-        if let Some(smallest_child) = self.smallest_child(index) {
-            if let Order::Greater = (self.cmp)(&self.data[index], &self.data[smallest_child]) {
+        if let Some(smallest_child) = self.largest_child(index) {
+            if let Order::Smaller = (self.cmp)(&self.data[index], &self.data[smallest_child]) {
                 self.swap(index, smallest_child);
                 self.sink(smallest_child);
             }
@@ -32,7 +41,7 @@ impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
 
     pub fn swim(&mut self, index: usize) {
         if let Some(parent) = self.parent(index) {
-            if let Order::Greater = (self.cmp)(&self.data[parent], &self.data[index]) {
+            if let Order::Smaller = (self.cmp)(&self.data[parent], &self.data[index]) {
                 self.swap(parent, index);
                 self.swim(parent);
             }
@@ -67,11 +76,11 @@ impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
 
     pub fn pop_many(&mut self, amount: usize) -> Vec<T> {
         let real_amount = min(self.len, amount);
-        let mut result = Vec::with_capacity(real_amount);
+        let mut result = Vec::new();
         let cur_index = 0_usize;
 
         while let Some(next) = self.data.pop() {
-            result[cur_index] = next;
+            result.push(next);
         }
 
         return result;
@@ -91,7 +100,7 @@ impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
         }
     }
 
-    fn smallest_child(&self, index: usize) -> Option<usize> {
+    fn largest_child(&self, index: usize) -> Option<usize> {
         let (left, right) = self.children(index);
 
         if left >= self.data.len() {
@@ -99,14 +108,32 @@ impl<T, F: Fn(&T, &T) -> Order> MinHeap<T, F> {
         } else if right >= self.data.len() {
             Some(left)
         } else if let Order::Greater = (self.cmp)(&self.data[left], &self.data[right]) {
-            Some(right)
-        } else {
             Some(left)
+        } else {
+            Some(right)
         }
     }
 
     fn children(&self, index: usize) -> (usize, usize) {
         let right_child = (index + 1) * 2;
         (right_child - 1, right_child)
+    }
+
+    pub fn unsorted_iter(&self) -> IntoIter<T> {
+        self.data.clone().into_iter()
+    }
+
+    pub fn combine_with(&self, other: &MaxHeap<T, F>) -> Self {
+        let mut new_heap = self.clone();
+
+        for item in other.unsorted_iter() {
+            new_heap.insert(item);
+        }
+
+        new_heap
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
     }
 }

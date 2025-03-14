@@ -7,7 +7,7 @@ use crate::util::combine_tuple_lists;
 
 use std::collections::HashSet;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AccountInfo {
     pub name: String,
     pub recent_games: HashSet<String>,
@@ -24,7 +24,10 @@ pub async fn test_account_build_info() {
     println!("{:?}", account);
 }
 
-pub async fn score_account_overlap(base_account: AccountInfo, scored_account: AccountInfo) -> f32 {
+pub async fn score_account_overlap(
+    base_account: &AccountInfo,
+    scored_account: &AccountInfo,
+) -> f32 {
     let norm_size = base_account.recent_games.len();
 
     let inter_size = base_account
@@ -54,7 +57,7 @@ fn extract_child_text<'a>(node: &Node<'a>, parser: &Parser<'a>) -> Option<String
     Some(text)
 }
 
-async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Error>> {
+pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Error>> {
     let raw_page = profile_from_link(link).await?;
 
     let parse_options = tl::ParserOptions::default();
@@ -133,7 +136,7 @@ pub fn get_href_from_node<'a>(node: &Node<'a>) -> Option<String> {
 }
 
 pub async fn get_friends(link: String) -> Result<Vec<(String, String)>, Box<dyn Error>> {
-    let raw_friends = raw_friends_page(link).await?;
+    let raw_friends = raw_friends_page(link + "/friends/").await?;
 
     let parse_options = tl::ParserOptions::default();
 
@@ -145,7 +148,6 @@ pub async fn get_friends(link: String) -> Result<Vec<(String, String)>, Box<dyn 
         .get_elements_by_class_name("selectable_overlay")
         .filter_map(|node| node.get(parser))
         .filter_map(get_href_from_node)
-        .map(|str| str + "/friends/")
         .collect::<Vec<String>>();
 
     let friend_names = dom

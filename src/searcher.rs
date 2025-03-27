@@ -133,25 +133,13 @@ impl Searcher {
         queue.insert((String::from("START"), self.source.to_string(), 0_f32));
 
         loop {
-            let current_run = time_fn(
-                || self.collect_batch(&queue, &preds, 1000, max_depth),
-                "Collect Runs",
-            );
+            let current_run = self.collect_batch(&queue, &preds, 1000, max_depth);
 
-            let (queues, paths) = time_fn_async(
-                || async { unzip_tuple_lists(current_run.join_all().await) },
-                "Execute All",
-            )
-            .await;
+            let (queues, paths) = unzip_tuple_lists(current_run.join_all().await);
 
-            queue = time_fn(
-                || {
-                    queues
-                        .iter()
-                        .fold(queue.clone(), |acc, next| acc.combine_with(next))
-                },
-                "Merging Queues",
-            );
+            queue = queues
+                .iter()
+                .fold(queue.clone(), |acc, next| acc.combine_with(next));
 
             if queue.len() == 0 {
                 let mut path = vec![self.target_link.to_string()];
@@ -169,18 +157,13 @@ impl Searcher {
                 return Ok(path);
             }
 
-            preds = time_fn(
-                || {
-                    paths
-                        .clone()
-                        .into_iter()
-                        .fold(HashMap::new(), |mut acc, next| {
-                            acc.extend(next);
-                            acc
-                        })
-                },
-                "Merging Paths",
-            );
+            preds = paths
+                .clone()
+                .into_iter()
+                .fold(HashMap::new(), |mut acc, next| {
+                    acc.extend(next);
+                    acc
+                });
 
             println!("Complete iteration");
         }

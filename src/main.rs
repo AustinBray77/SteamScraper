@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{env, error::Error};
 
 use searcher::Searcher;
 
@@ -16,12 +16,32 @@ mod util;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let searcher = Searcher::new(
-        "https://steamcommunity.com/profiles/76561198138683364",
+        "https://steamcommunity.com/profiles/76561198258961896",
         "https://steamcommunity.com/profiles/76561198043820228",
     )
     .await;
 
-    let path = searcher.start_search(10).await?;
+    let mut args = env::args();
+
+    args.next();
+
+    let chunk_size = match args.next() {
+        Some(size) => size
+            .parse::<usize>()
+            .expect("Expects first argument to be usize!"),
+        None => 1000_usize,
+    };
+
+    let max_depth = match args.next() {
+        Some(depth) => depth
+            .parse::<usize>()
+            .expect("Expects second argument to be usize!"),
+        None => 10_usize,
+    };
+
+    println!("Chunk size: {}, Max depth: {}", chunk_size, max_depth);
+
+    let path = searcher.start_search(max_depth, chunk_size).await?;
 
     for val in path {
         print!("{} ->", val);

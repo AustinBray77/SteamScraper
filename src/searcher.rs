@@ -12,18 +12,18 @@ type HeapCompare = fn(&(String, String, f32), &(String, String, f32)) -> Order;
 
 pub struct Searcher {
     source: &'static str,
-    source_account_info: AccountInfo,
+    dest_account_info: AccountInfo,
     target_link: &'static str,
     cmp_fn: fn(&(String, String, f32), &(String, String, f32)) -> Order,
 }
 
 impl Searcher {
     pub async fn new(source: &'static str, target_link: &'static str) -> Self {
-        let account_info = build_account_info(source.to_string()).await.unwrap();
+        let account_info = build_account_info(target_link.to_string()).await.unwrap();
 
         Searcher {
             source: source,
-            source_account_info: account_info,
+            dest_account_info: account_info,
             target_link: target_link,
             cmp_fn: |(_, _, score1ptr), (_, _, score2ptr)| {
                 let score1 = *score1ptr;
@@ -46,7 +46,7 @@ impl Searcher {
         person_link: String,
         _max_depth: usize,
         cmp_fn: HeapCompare,
-        source_account_info: &AccountInfo,
+        dst_account_info: &AccountInfo,
     ) -> (
         MaxHeap<(String, String, f32), HeapCompare>,
         HashMap<String, String>,
@@ -69,7 +69,7 @@ impl Searcher {
                 Err(_) => return (MaxHeap::new(cmp_fn), HashMap::new()),
             };
 
-            let score = score_account_overlap(&source_account_info, &next_account).await;
+            let score = score_account_overlap(&dst_account_info, &next_account);
 
             new_queue.insert((name.clone(), link, score));
             new_preds.insert(name, person.clone());
@@ -87,17 +87,25 @@ impl Searcher {
         preds: &HashMap<String, String>,
         batch_size: usize,
         max_depth: usize,
-    ) -> JoinSet<(
+    ) -> (
+        JoinSet<(
+            MaxHeap<
+                (String, String, f32),
+                fn(&(String, String, f32), &(String, String, f32)) -> Order,
+            >,
+            HashMap<String, String>,
+        )>,
         MaxHeap<(String, String, f32), fn(&(String, String, f32), &(String, String, f32)) -> Order>,
-        HashMap<String, String>,
-    )> {
+    ) {
         let mut task_set = JoinSet::new();
         let shared_path = Arc::new(preds.clone());
-        let shared_account_info = Arc::new(self.source_account_info.clone());
+        let shared_account_info = Arc::new(self.dest_account_info.clone());
 
-        for (person, friends_link, _) in queue.clone().pop_many(batch_size) {
+        let mut new_queue = queue.clone();
+
+        for (person, friends_link, _) in new_queue.pop_many(batch_size) {
             if person == self.target_link.to_string() {
-                return JoinSet::new();
+                return (JoinSet::new(), new_queue);
             }
 
             let person_owned = person.clone();
@@ -119,10 +127,14 @@ impl Searcher {
             });
         }
 
-        task_set
+        (task_set, new_queue)
     }
 
-    pub async fn start_search(&self, max_depth: usize) -> Result<Vec<String>, Box<dyn Error>> {
+    pub async fn start_search(
+        &self,
+        max_depth: usize,
+        batch_size: usize,
+    ) -> Result<Vec<String>, Box<dyn Error>> {
         let mut queue: MaxHeap<
             (String, String, f32),
             fn(&(String, String, f32), &(String, String, f32)) -> Order,
@@ -133,13 +145,27 @@ impl Searcher {
         queue.insert((String::from("START"), self.source.to_string(), 0_f32));
 
         loop {
-            let current_run = self.collect_batch(&queue, &preds, 1000, max_depth);
+            let (current_run, new_queue) = time_fn(
+                || self.collect_batch(&queue, &preds, batch_size, max_depth),
+                "Collecting Runs",
+            );
 
-            let (queues, paths) = unzip_tuple_lists(current_run.join_all().await);
+            let (queues, paths) = time_fn_async(
+                || async { unzip_tuple_lists(current_run.join_all().await) },
+                "Running...",
+            )
+            .await;
 
-            queue = queues
-                .iter()
-                .fold(queue.clone(), |acc, next| acc.combine_with(next));
+            queue = new_queue;
+
+            queue = time_fn(
+                || {
+                    queues
+                        .iter()
+                        .fold(queue.clone(), |acc, next| acc.combine_with(next))
+                },
+                "Combining Heaps",
+            );
 
             if queue.len() == 0 {
                 let mut path = vec![self.target_link.to_string()];
@@ -157,13 +183,18 @@ impl Searcher {
                 return Ok(path);
             }
 
-            preds = paths
-                .clone()
-                .into_iter()
-                .fold(HashMap::new(), |mut acc, next| {
-                    acc.extend(next);
-                    acc
-                });
+            preds = time_fn(
+                || {
+                    paths
+                        .clone()
+                        .into_iter()
+                        .fold(HashMap::new(), |mut acc, next| {
+                            acc.extend(next);
+                            acc
+                        })
+                },
+                "Combining Preds",
+            );
 
             println!("Complete iteration");
         }

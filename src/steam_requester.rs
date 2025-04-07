@@ -24,10 +24,7 @@ pub async fn test_account_build_info() {
     println!("{:?}", account);
 }
 
-pub async fn score_account_overlap(
-    base_account: &AccountInfo,
-    scored_account: &AccountInfo,
-) -> f32 {
+pub fn score_account_overlap(base_account: &AccountInfo, scored_account: &AccountInfo) -> f32 {
     let norm_size = base_account.recent_games.len();
 
     let inter_size = base_account

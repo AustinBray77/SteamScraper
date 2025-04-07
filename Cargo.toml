@@ -7,7 +7,6 @@ edition = "2021"
 debug = true
 
 [dependencies]
-flamegraph = "0.6.7"
 reqwest = "0.12.12"
 tl = "0.7.8"
 tokio = { version="1.43.0", features=["full"] }

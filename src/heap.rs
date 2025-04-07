@@ -77,10 +77,15 @@ impl<T: Clone, F: Fn(&T, &T) -> Order + Clone> MaxHeap<T, F> {
     pub fn pop_many(&mut self, amount: usize) -> Vec<T> {
         let real_amount = min(self.len, amount);
         let mut result = Vec::new();
-        let cur_index = 0_usize;
+        let mut cur_index = 0_usize;
 
-        while let Some(next) = self.data.pop() {
+        while let Some(next) = self.pop() {
             result.push(next);
+            cur_index += 1;
+
+            if cur_index >= real_amount {
+                break;
+            }
         }
 
         return result;

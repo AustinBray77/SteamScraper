@@ -1,6 +1,7 @@
 use std::{env, error::Error};
 
 use searcher::Searcher;
+use steam_requester::test_account_build_info;
 
 extern crate reqwest;
 extern crate tl;
@@ -17,7 +18,7 @@ mod util;
 async fn main() -> Result<(), Box<dyn Error>> {
     let searcher = Searcher::new(
         "https://steamcommunity.com/profiles/76561198258961896",
-        "https://steamcommunity.com/profiles/76561198043820228",
+        "https://steamcommunity.com/id/SpookyTheOoze",
     )
     .await;
 

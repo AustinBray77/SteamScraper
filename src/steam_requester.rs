@@ -11,12 +11,14 @@ use std::collections::HashSet;
 pub struct AccountInfo {
     pub name: String,
     pub recent_games: HashSet<String>,
+    pub favorite_game: String,
     pub country: String,
+    pub private: bool,
 }
 
 pub async fn test_account_build_info() {
     let account = build_account_info(String::from(
-        "https://steamcommunity.com/profiles/76561198138683364/",
+        "https://steamcommunity.com/profiles/76561198043820228",
     ))
     .await
     .unwrap();
@@ -33,7 +35,7 @@ pub fn score_account_overlap(base_account: &AccountInfo, scored_account: &Accoun
         .collect::<HashSet<&String>>()
         .len();
 
-    let size_score = inter_size as f32 / norm_size as f32;
+    let recent_games_score = inter_size as f32 / norm_size as f32;
 
     let country_score = if base_account.country == scored_account.country {
         1_f32
@@ -41,17 +43,29 @@ pub fn score_account_overlap(base_account: &AccountInfo, scored_account: &Accoun
         0_f32
     };
 
-    0.75_f32 * country_score + 0.25_f32 * size_score
+    let fav_game_score = if base_account.favorite_game == scored_account.favorite_game
+        && base_account.favorite_game != String::new()
+    {
+        1_f32
+    } else {
+        0_f32
+    };
+
+    0.1_f32 * country_score + 0.4_f32 * recent_games_score + 0.5 * fav_game_score
 }
 
 fn extract_child_text<'a>(node: &Node<'a>, parser: &Parser<'a>) -> Option<String> {
     let children = node.children()?;
 
-    let first_child = children.top().iter().next()?;
+    let child_text_combined = children.top().iter().fold(String::new(), |acc, next| {
+        if let Some(node) = next.get(parser) {
+            acc + node.inner_text(parser).to_string().as_str()
+        } else {
+            acc
+        }
+    });
 
-    let text = first_child.get(parser)?.inner_text(parser).to_string();
-
-    Some(text)
+    Some(child_text_combined.trim().to_string())
 }
 
 pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Error>> {
@@ -62,6 +76,21 @@ pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Err
     let dom = tl::parse(raw_page.as_str(), parse_options)?;
 
     let parser = dom.parser();
+
+    let private_field = dom
+        .get_elements_by_class_name("profile_private_info")
+        .filter_map(|node| node.get(parser))
+        .last();
+
+    if let Some(_) = private_field {
+        return Ok(AccountInfo {
+            name: String::new(),
+            recent_games: HashSet::new(),
+            favorite_game: String::new(),
+            country: String::new(),
+            private: true,
+        });
+    }
 
     let recent_games = dom
         .get_elements_by_class_name("game_name")
@@ -89,10 +118,21 @@ pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Err
         .trim()
         .to_string();
 
+    let favorite_game = dom
+        .get_elements_by_class_name("showcase_item_detail_title")
+        .filter_map(|node| node.get(parser))
+        .filter_map(|node| extract_child_text(node, parser))
+        .collect::<Vec<String>>()
+        .first()
+        .map(|x| x.clone().trim().to_string())
+        .unwrap_or(String::new());
+
     Ok(AccountInfo {
         name: name,
         recent_games: recent_games,
+        favorite_game: favorite_game,
         country: country,
+        private: false,
     })
 }
 

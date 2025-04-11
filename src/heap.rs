@@ -1,4 +1,4 @@
-use std::{cmp::min, vec::IntoIter};
+use std::{cmp::min, collections::HashSet, hash::Hash, vec::IntoIter};
 
 pub enum Order {
     Greater,
@@ -6,27 +6,33 @@ pub enum Order {
     Smaller,
 }
 
-#[derive(Clone)]
-pub struct MaxHeap<T: Clone, F: Fn(&T, &T) -> Order> {
+#[derive(Clone, Debug)]
+pub struct MaxHeap<T: Clone, U: Hash + Eq + Clone> {
     data: Vec<T>,
+    keys: HashSet<U>,
     len: usize,
-    cmp: F,
+    cmp: fn(&T, &T) -> Order,
+    key: fn(&T) -> &U,
 }
 
-impl<T: Clone, F: Fn(&T, &T) -> Order + Clone> MaxHeap<T, F> {
-    pub fn new(cmp: F) -> Self {
+impl<T: Clone, U: Hash + Eq + Clone> MaxHeap<T, U> {
+    pub fn new(cmp: fn(&T, &T) -> Order, key: fn(&T) -> &U) -> Self {
         Self {
             data: Vec::new(),
+            keys: HashSet::new(),
             len: 0,
             cmp: cmp,
+            key: key,
         }
     }
 
     pub fn new_similar(&self) -> Self {
         Self {
             data: Vec::new(),
+            keys: HashSet::new(),
             len: 0,
             cmp: self.cmp.clone(),
+            key: self.key.clone(),
         }
     }
 
@@ -48,7 +54,17 @@ impl<T: Clone, F: Fn(&T, &T) -> Order + Clone> MaxHeap<T, F> {
         }
     }
 
+    pub fn in_heap(&self, item: &T) -> bool {
+        self.keys.contains((self.key)(item))
+    }
+
     pub fn insert(&mut self, item: T) {
+        if self.in_heap(&item) {
+            return;
+        }
+
+        self.keys.insert((self.key)(&item).clone());
+
         self.data.push(item);
         self.len += 1;
 
@@ -128,7 +144,7 @@ impl<T: Clone, F: Fn(&T, &T) -> Order + Clone> MaxHeap<T, F> {
         self.data.clone().into_iter()
     }
 
-    pub fn combine_with(&self, other: &MaxHeap<T, F>) -> Self {
+    pub fn combine_with(&self, other: &MaxHeap<T, U>) -> Self {
         let mut new_heap = self.clone();
 
         for item in other.unsorted_iter() {
@@ -140,5 +156,10 @@ impl<T: Clone, F: Fn(&T, &T) -> Order + Clone> MaxHeap<T, F> {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn truncate(&mut self, size: usize) {
+        self.data.truncate(size);
+        self.len = self.data.len();
     }
 }

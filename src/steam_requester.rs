@@ -1,18 +1,21 @@
+use core::num;
+use std::default;
 use std::{error::Error, fmt::Display};
 
 use tl::{Node, NodeHandle, Parser};
 
 use crate::error::SteamError;
-use crate::util::combine_tuple_lists;
+use crate::util::{combine_tuple_lists, round};
 
 use std::collections::HashSet;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AccountInfo {
     pub name: String,
     pub recent_games: HashSet<String>,
     pub favorite_game: String,
     pub country: String,
+    pub num_friends: f32,
     pub private: bool,
 }
 
@@ -51,7 +54,18 @@ pub fn score_account_overlap(base_account: &AccountInfo, scored_account: &Accoun
         0_f32
     };
 
-    0.1_f32 * country_score + 0.4_f32 * recent_games_score + 0.5 * fav_game_score
+    let friend_score = scored_account
+        .num_friends
+        .log(1000_f32)
+        .clamp(0_f32, 1000_f32);
+
+    round(
+        0.3_f32 * country_score
+            + 0.3_f32 * recent_games_score
+            + 0.3 * fav_game_score
+            + 0.5 * friend_score,
+        2,
+    )
 }
 
 fn extract_child_text<'a>(node: &Node<'a>, parser: &Parser<'a>) -> Option<String> {
@@ -84,11 +98,8 @@ pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Err
 
     if let Some(_) = private_field {
         return Ok(AccountInfo {
-            name: String::new(),
-            recent_games: HashSet::new(),
-            favorite_game: String::new(),
-            country: String::new(),
             private: true,
+            ..Default::default()
         });
     }
 
@@ -122,16 +133,31 @@ pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Err
         .get_elements_by_class_name("showcase_item_detail_title")
         .filter_map(|node| node.get(parser))
         .filter_map(|node| extract_child_text(node, parser))
-        .collect::<Vec<String>>()
-        .first()
+        .next()
         .map(|x| x.clone().trim().to_string())
         .unwrap_or(String::new());
+
+    let num_friends = dom
+        .get_elements_by_class_name("profile_count_link")
+        .filter_map(|node| node.get(parser))
+        .filter_map(|node| node.children())
+        .filter_map(|children| children.all(parser).get(1))
+        .filter_map(|node| extract_child_text(node, parser))
+        .filter(|text| text.contains("Friends"))
+        .next()
+        .map(|x| x.clone().trim().to_string())
+        .map(|x| x.replace("\t", "").replace("\n", "").replace(" ", ""))
+        .map(|x| x.split(';').last().unwrap_or("").to_string())
+        .unwrap_or(String::new())
+        .parse::<i32>()
+        .unwrap_or(0);
 
     Ok(AccountInfo {
         name: name,
         recent_games: recent_games,
         favorite_game: favorite_game,
         country: country,
+        num_friends: num_friends as f32,
         private: false,
     })
 }

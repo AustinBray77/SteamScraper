@@ -183,7 +183,7 @@ impl Searcher {
 
             println!("Heap Size: {}", queue.len());
 
-            //queue.truncate(1000);
+            queue.truncate(100000);
 
             if queue.len() == 0 {
                 let mut path = vec![self.target_link.to_string()];

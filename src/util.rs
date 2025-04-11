@@ -69,3 +69,8 @@ pub async fn time_fn_async<T, F: FnOnce() -> Fut, Fut: std::future::Future<Outpu
 
     result
 }
+
+pub fn round(val: f32, places: usize) -> f32 {
+    let digit_mult = 10_f32.powi(places as i32);
+    (val * digit_mult).round() / digit_mult
+}

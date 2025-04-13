@@ -5,7 +5,7 @@ use std::{error::Error, fmt::Display};
 use tl::{Node, NodeHandle, Parser};
 
 use crate::error::SteamError;
-use crate::util::{combine_tuple_lists, round};
+use crate::util::{combine_tuple_lists, print_and_return, round};
 
 use std::collections::HashSet;
 
@@ -13,6 +13,7 @@ use std::collections::HashSet;
 pub struct AccountInfo {
     pub name: String,
     pub recent_games: HashSet<String>,
+    pub groups: HashSet<String>,
     pub favorite_game: String,
     pub country: String,
     pub num_friends: f32,
@@ -20,11 +21,11 @@ pub struct AccountInfo {
 }
 
 pub async fn test_account_build_info() {
-    let account = build_account_info(String::from(
-        "https://steamcommunity.com/profiles/76561198043820228",
-    ))
-    .await
-    .unwrap();
+    //https://steamcommunity.com/profiles/76561198043820228
+
+    let account = build_account_info(String::from("https://steamcommunity.com/id/demizegg"))
+        .await
+        .unwrap();
 
     println!("{:?}", account);
 }
@@ -38,7 +39,17 @@ pub fn score_account_overlap(base_account: &AccountInfo, scored_account: &Accoun
         .collect::<HashSet<&String>>()
         .len();
 
+    let inter_group_size = base_account
+        .groups
+        .intersection(&(scored_account.groups))
+        .collect::<HashSet<&String>>()
+        .len();
+
+    let norm_group_size = base_account.groups.len();
+
     let recent_games_score = inter_size as f32 / norm_size as f32;
+
+    let groups_score = inter_group_size as f32 / norm_group_size as f32;
 
     let country_score = if base_account.country == scored_account.country {
         1_f32
@@ -54,17 +65,15 @@ pub fn score_account_overlap(base_account: &AccountInfo, scored_account: &Accoun
         0_f32
     };
 
-    let friend_score = scored_account
-        .num_friends
-        .log(1000_f32)
-        .clamp(0_f32, 1000_f32);
+    let friend_score = scored_account.num_friends.log(1000_f32).clamp(0_f32, 1_f32);
 
     round(
-        0.3_f32 * country_score
-            + 0.3_f32 * recent_games_score
-            + 0.3 * fav_game_score
-            + 0.5 * friend_score,
-        2,
+        0.15 * country_score
+            + 0.15 * recent_games_score
+            + 0.1 * fav_game_score
+            + 0.1 * friend_score
+            + 0.5 * groups_score,
+        4,
     )
 }
 
@@ -152,10 +161,19 @@ pub async fn build_account_info(link: String) -> Result<AccountInfo, Box<dyn Err
         .parse::<i32>()
         .unwrap_or(0);
 
+    let groups = dom
+        .get_elements_by_class_name("profile_group")
+        .filter_map(|node| node.get(parser))
+        .filter_map(|node| node.children())
+        .filter_map(|children| children.all(parser).get(9))
+        .filter_map(|node| extract_child_text(node, parser))
+        .collect::<HashSet<String>>();
+
     Ok(AccountInfo {
         name: name,
         recent_games: recent_games,
         favorite_game: favorite_game,
+        groups: groups,
         country: country,
         num_friends: num_friends as f32,
         private: false,

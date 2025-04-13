@@ -18,7 +18,7 @@ mod util;
 async fn main() -> Result<(), Box<dyn Error>> {
     let searcher = Searcher::new(
         "https://steamcommunity.com/profiles/76561198258961896",
-        "https://steamcommunity.com/id/SpookyTheOoze",
+        "https://steamcommunity.com/id/eltia",
     )
     .await;
 

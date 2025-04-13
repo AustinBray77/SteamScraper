@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::time::Instant;
 
@@ -73,4 +74,9 @@ pub async fn time_fn_async<T, F: FnOnce() -> Fut, Fut: std::future::Future<Outpu
 pub fn round(val: f32, places: usize) -> f32 {
     let digit_mult = 10_f32.powi(places as i32);
     (val * digit_mult).round() / digit_mult
+}
+
+pub fn print_and_return<T: Debug>(val: T) -> T {
+    println!("{:?}", val);
+    val
 }

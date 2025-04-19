@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::future::poll_fn;
 use std::sync::mpsc::SendError;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinSet;
@@ -166,29 +168,46 @@ impl Searcher {
         let mut state = Message::None;
 
         loop {
-            /*
-            if let Ok(message) = msg_reciever.try_recv() {
-                println!("Recieved: {:?}", message);
-                state = message;
-            }
-
-            println!("{:?}", state);
+            state = match msg_reciever.try_recv() {
+                Ok(message) => message,
+                _ => state,
+            };
 
             match state {
                 Message::Pause => {
-                    println!("Paused....");
+                    print!("Paused.... \r");
                     continue;
                 }
                 Message::Quit => {
                     return Err(SteamError::boxed_new("Quit Initiated"));
                 }
                 _ => {}
-            }*/
+            }
 
             let (current_run, new_queue) = time_fn(
                 || self.collect_batch(&queue, &preds, batch_size, max_depth),
                 "Collecting Runs",
             );
+
+            if current_run.is_empty() {
+                let mut path = vec![self.target_link.to_string()];
+                let mut cur = self.target_link.to_string();
+
+                while let Some(pred) = preds.get(&cur) {
+                    if pred.clone() == String::new() {
+                        break;
+                    }
+
+                    path.push(pred.clone());
+                    cur = pred.clone();
+
+                    if cur == self.source.to_string() {
+                        break;
+                    }
+                }
+
+                return Ok(path);
+            }
 
             let (queues, paths) = time_fn_async(
                 || async { unzip_tuple_lists(current_run.join_all().await) },
@@ -210,28 +229,6 @@ impl Searcher {
             println!("Heap Size: {}", queue.len());
 
             queue.truncate(100000);
-
-            if queue.len() == 0 {
-                let account = build_account_info(self.target_link.to_string()).await?;
-
-                let mut path = vec![self.target_link.to_string()];
-                let mut cur = self.target_link.to_string();
-
-                while let Some(pred) = preds.get(&cur) {
-                    if pred.clone() == String::new() {
-                        break;
-                    }
-
-                    path.push(pred.clone());
-                    cur = pred.clone();
-
-                    if cur == self.source.to_string() {
-                        break;
-                    }
-                }
-
-                return Ok(path);
-            }
 
             preds = time_fn(
                 || {

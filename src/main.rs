@@ -16,6 +16,7 @@ mod error;
 mod heap;
 mod log;
 mod msg;
+mod process_runner;
 mod searcher;
 mod steam_requester;
 mod util;
@@ -24,7 +25,7 @@ mod util;
 async fn main() -> Result<(), Box<dyn Error>> {
     let searcher = Searcher::new(
         "https://steamcommunity.com/profiles/76561198258961896",
-        "https://steamcommunity.com/id/eltia",
+        "https://steamcommunity.com/id/Undeadnemesiss",
     )
     .await;
 
@@ -48,17 +49,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Chunk size: {}, Max depth: {}", chunk_size, max_depth);
 
-    let (mut sender, mut reciever) = mpsc::channel::<Message>(100);
+    let (sender, reciever) = mpsc::channel::<Message>(100);
 
     let mut thread_task: JoinSet<()> = JoinSet::new();
 
-    //thread_task.spawn(search(searcher, max_depth, chunk_size, reciever));
+    thread_task.spawn(search(searcher, max_depth, chunk_size, reciever));
 
-    //thread_task.spawn(get_input(sender));
+    thread_task.spawn(get_input(sender));
 
-    //thread_task.join_all().await;
+    thread_task.join_all().await;
 
-    search(searcher, max_depth, chunk_size, reciever).await;
+    //search(searcher, max_depth, chunk_size, reciever).await;
 
     Ok(())
 }
@@ -75,14 +76,30 @@ async fn get_input(sender: Sender<Message>) {
 
         println!("Read input: {}", input);
 
-        let message = match input.as_str() {
+        let message = match input.trim() {
             "q" => Message::Quit,
             "p" => Message::Pause,
             "c" => Message::Continue,
             _ => Message::None,
         };
 
-        sender.send(message).await.unwrap();
+        println!("Sending: {:?}", message);
+
+        match sender.send(message.clone()).await {
+            Err(err) => {
+                println!("{}", err.to_string());
+                println!("Exiting...");
+                break;
+            }
+            _ => {}
+        }
+
+        match message {
+            Message::Quit => {
+                break;
+            }
+            _ => {}
+        }
     }
 }
 
@@ -102,7 +119,7 @@ async fn search(
                 print!("{} <-> ", val);
             }
 
-            print!("{}", last);
+            print!("{}\n", last);
         }
         Err(err) => {
             println!("{:?}", err);

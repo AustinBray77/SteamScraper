@@ -1,4 +1,9 @@
-use std::{env, error::Error};
+use msg::Message;
+use std::{env, error::Error, os::windows::thread};
+use tokio::{
+    sync::mpsc::{self, Receiver, Sender},
+    task::JoinSet,
+};
 
 use searcher::Searcher;
 use steam_requester::test_account_build_info;
@@ -10,6 +15,7 @@ extern crate tokio;
 mod error;
 mod heap;
 mod log;
+mod msg;
 mod searcher;
 mod steam_requester;
 mod util;
@@ -42,11 +48,64 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Chunk size: {}, Max depth: {}", chunk_size, max_depth);
 
-    let path = searcher.start_search(max_depth, chunk_size).await?;
+    let (mut sender, mut reciever) = mpsc::channel::<Message>(100);
 
-    for val in path {
-        print!("{} ->", val);
-    }
+    let mut thread_task: JoinSet<()> = JoinSet::new();
+
+    //thread_task.spawn(search(searcher, max_depth, chunk_size, reciever));
+
+    //thread_task.spawn(get_input(sender));
+
+    //thread_task.join_all().await;
+
+    search(searcher, max_depth, chunk_size, reciever).await;
 
     Ok(())
+}
+
+async fn get_input(sender: Sender<Message>) {
+    use std::io::stdin;
+
+    let input_reader = stdin();
+
+    loop {
+        let mut input = String::new();
+
+        let _ = input_reader.read_line(&mut input);
+
+        println!("Read input: {}", input);
+
+        let message = match input.as_str() {
+            "q" => Message::Quit,
+            "p" => Message::Pause,
+            "c" => Message::Continue,
+            _ => Message::None,
+        };
+
+        sender.send(message).await.unwrap();
+    }
+}
+
+async fn search(
+    searcher: Searcher,
+    max_depth: usize,
+    chunk_size: usize,
+    reciever: Receiver<Message>,
+) {
+    let path_result = searcher.start_search(max_depth, chunk_size, reciever).await;
+
+    match path_result {
+        Ok(mut path) => {
+            let last = path.pop().unwrap();
+
+            for val in path {
+                print!("{} <-> ", val);
+            }
+
+            print!("{}", last);
+        }
+        Err(err) => {
+            println!("{:?}", err);
+        }
+    }
 }

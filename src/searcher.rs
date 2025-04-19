@@ -3,9 +3,12 @@ use std::error::Error;
 use std::sync::mpsc::SendError;
 use std::sync::Arc;
 
+use tokio::sync::mpsc::Receiver;
 use tokio::task::JoinSet;
 
+use crate::error::SteamError;
 use crate::heap::{MaxHeap, Order};
+use crate::msg::Message;
 use crate::steam_requester::{build_account_info, get_friends, score_account_overlap, AccountInfo};
 use crate::util::{time_fn, time_fn_async, unzip_tuple_lists};
 
@@ -83,7 +86,7 @@ impl Searcher {
         let mut score_friends_tasks: JoinSet<Option<(String, String, f32)>> = JoinSet::new();
 
         for (name, link) in f_names_and_links {
-            if let Some(_) = preds.get(&(name.clone() + "," + link.clone().as_str())) {
+            if let Some(_) = preds.get(&link.clone()) {
                 //println!("Skipping: {}", name);
                 continue;
             }
@@ -101,7 +104,7 @@ impl Searcher {
             .filter_map(|x| x)
             .for_each(|(name, link, score)| {
                 new_queue.insert((name.clone(), link.clone(), score));
-                new_preds.insert(name + "," + link.as_str(), person.clone());
+                new_preds.insert(link.clone(), person_link.clone());
             });
 
         (new_queue, new_preds)
@@ -122,6 +125,7 @@ impl Searcher {
 
         for (person, friends_link, score) in new_queue.pop_many(batch_size) {
             if friends_link == self.target_link.to_string() {
+                println!("Target acquired...");
                 return (JoinSet::new(), new_queue);
             }
 
@@ -136,7 +140,7 @@ impl Searcher {
                 Self::search_node_with_score(
                     &path_ref,
                     person_owned,
-                    link_owned + "/friends/",
+                    link_owned,
                     max_depth,
                     account_ref,
                 )
@@ -151,6 +155,7 @@ impl Searcher {
         &self,
         max_depth: usize,
         batch_size: usize,
+        mut msg_reciever: Receiver<Message>,
     ) -> Result<Vec<String>, Box<dyn Error>> {
         let mut queue: Heap = MaxHeap::new(Self::cmp, Self::key);
 
@@ -158,7 +163,28 @@ impl Searcher {
 
         queue.insert((String::from("START"), self.source.to_string(), 0_f32));
 
+        let mut state = Message::None;
+
         loop {
+            /*
+            if let Ok(message) = msg_reciever.try_recv() {
+                println!("Recieved: {:?}", message);
+                state = message;
+            }
+
+            println!("{:?}", state);
+
+            match state {
+                Message::Pause => {
+                    println!("Paused....");
+                    continue;
+                }
+                Message::Quit => {
+                    return Err(SteamError::boxed_new("Quit Initiated"));
+                }
+                _ => {}
+            }*/
+
             let (current_run, new_queue) = time_fn(
                 || self.collect_batch(&queue, &preds, batch_size, max_depth),
                 "Collecting Runs",
@@ -186,6 +212,8 @@ impl Searcher {
             queue.truncate(100000);
 
             if queue.len() == 0 {
+                let account = build_account_info(self.target_link.to_string()).await?;
+
                 let mut path = vec![self.target_link.to_string()];
                 let mut cur = self.target_link.to_string();
 
@@ -196,6 +224,10 @@ impl Searcher {
 
                     path.push(pred.clone());
                     cur = pred.clone();
+
+                    if cur == self.source.to_string() {
+                        break;
+                    }
                 }
 
                 return Ok(path);
@@ -216,12 +248,12 @@ impl Searcher {
 
             //println!("Preds: {:?}", preds);
 
-            println!(
+            /*println!(
                 "End pred: {:?}",
                 preds.get(&String::from(
                     "Dr.Disrepect,https://steamcommunity.com/profiles/76561198043820228"
                 ))
-            );
+            );*/
 
             println!("Complete iteration");
         }
